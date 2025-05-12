@@ -17,3 +17,9 @@ variable "deployment_package_key" {
   description = "Path to the deployment package inside the S3 bucket"
   type        = string
 }
+
+variable "create_lambda_role" {
+  description = "Set to true to create a new IAM role, false to reference existing one"
+  type        = bool
+  default     = false
+}

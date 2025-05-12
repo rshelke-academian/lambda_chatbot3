@@ -1,3 +1,4 @@
+
 terraform {
   required_providers {
     aws = {
@@ -19,9 +20,38 @@ data "aws_s3_bucket" "lambda_bucket" {
   bucket = var.s3_bucket
 }
 
-# Reference existing IAM role
+# Conditional IAM role creation
+variable "create_lambda_role" {
+  type    = bool
+  default = false
+}
+
+resource "aws_iam_role" "lambda_role" {
+  count = var.create_lambda_role ? 1 : 0
+  name  = var.lambda_role_name
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Action = "sts:AssumeRole",
+        Effect = "Allow",
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
 data "aws_iam_role" "lambda_role" {
-  name = var.lambda_role_name
+  count = var.create_lambda_role ? 0 : 1
+  name  = var.lambda_role_name
+}
+
+locals {
+  lambda_role_arn  = var.create_lambda_role ? aws_iam_role.lambda_role[0].arn : data.aws_iam_role.lambda_role[0].arn
+  lambda_role_name = var.create_lambda_role ? aws_iam_role.lambda_role[0].name : data.aws_iam_role.lambda_role[0].name
 }
 
 # Reference existing IAM policy for Bedrock access
@@ -34,7 +64,7 @@ resource "aws_lambda_function" "chatbot_lambda" {
   function_name = var.lambda_function_name
   s3_bucket     = data.aws_s3_bucket.lambda_bucket.id
   s3_key        = var.deployment_package_key
-  role          = data.aws_iam_role.lambda_role.arn
+  role          = local.lambda_role_arn
   handler       = "lambda_function.lambda_handler"
   runtime       = "python3.12"
   timeout       = 30
@@ -49,12 +79,12 @@ resource "aws_lambda_function" "chatbot_lambda" {
 
 # IAM role policy attachments
 resource "aws_iam_role_policy_attachment" "lambda_bedrock_policy_attachment" {
-  role       = data.aws_iam_role.lambda_role.name
+  role       = local.lambda_role_name
   policy_arn = data.aws_iam_policy.lambda_bedrock_policy.arn
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_basic_policy_attachment" {
-  role       = data.aws_iam_role.lambda_role.name
+  role       = local.lambda_role_name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
