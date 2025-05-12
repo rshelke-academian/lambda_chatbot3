@@ -41,6 +41,16 @@ jobs:
         cd src
         zip -r ../deployment.zip .
 
+    - name: Create S3 bucket if it does not exist
+      run: |
+        if ! aws s3api head-bucket --bucket "${{ env.S3_BUCKET }}" 2>/dev/null; then
+          if [ "${{ env.AWS_REGION }}" = "us-east-1" ]; then
+            aws s3api create-bucket --bucket "${{ env.S3_BUCKET }}" --region "${{ env.AWS_REGION }}"
+          else
+            aws s3api create-bucket --bucket "${{ env.S3_BUCKET }}" --region "${{ env.AWS_REGION }}" --create-bucket-configuration LocationConstraint="${{ env.AWS_REGION }}"
+          fi
+        fi
+
     - name: Upload deployment.zip to S3
       run: |
         aws s3 cp deployment.zip "s3://${{ env.S3_BUCKET }}/deployment.zip"
