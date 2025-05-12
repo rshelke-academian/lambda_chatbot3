@@ -11,53 +11,30 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# S3 bucket for Lambda code
-resource "aws_s3_bucket" "lambda_bucket" {
+# Get current account ID for dynamic policy ARN
+data "aws_caller_identity" "current" {}
+
+# Reference existing S3 bucket (do NOT create it)
+data "aws_s3_bucket" "lambda_bucket" {
   bucket = var.s3_bucket
 }
 
-resource "aws_s3_bucket_versioning" "lambda_bucket_versioning" {
-  bucket = aws_s3_bucket.lambda_bucket.id
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-# IAM role for Lambda
-resource "aws_iam_role" "lambda_role" {
+# Reference existing IAM role
+data "aws_iam_role" "lambda_role" {
   name = var.lambda_role_name
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Action = "sts:AssumeRole",
-        Effect = "Allow",
-        Principal = {
-          Service = "lambda.amazonaws.com"
-        }
-      }
-    ]
-  })
 }
 
-# Attach AWS managed Bedrock policy instead of custom policy
-resource "aws_iam_role_policy_attachment" "lambda_bedrock_policy_attachment" {
-  role       = aws_iam_role.lambda_role.name
-  policy_arn = aws_iam_policy.lambda_bedrock_policy.arn
-}
-
-resource "aws_iam_role_policy_attachment" "lambda_basic_policy_attachment" {
-  role       = aws_iam_role.lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+# Reference existing IAM policy for Bedrock access
+data "aws_iam_policy" "lambda_bedrock_policy" {
+  arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/chatbot-lambda-bedrock-policy"
 }
 
 # Lambda function
 resource "aws_lambda_function" "chatbot_lambda" {
   function_name = var.lambda_function_name
-  s3_bucket     = aws_s3_bucket.lambda_bucket.id
+  s3_bucket     = data.aws_s3_bucket.lambda_bucket.id
   s3_key        = var.deployment_package_key
-  role          = aws_iam_role.lambda_role.arn
+  role          = data.aws_iam_role.lambda_role.arn
   handler       = "lambda_function.lambda_handler"
   runtime       = "python3.12"
   timeout       = 30
@@ -69,21 +46,18 @@ resource "aws_lambda_function" "chatbot_lambda" {
     }
   }
 }
-resource "aws_iam_policy" "lambda_bedrock_policy" {
-  name        = "chatbot-lambda-bedrock-policy"
-  description = "Policy for Lambda to access Bedrock"
 
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Action = ["bedrock:*"],
-        Effect = "Allow",
-        Resource = "*"
-      }
-    ]
-  })
+# IAM role policy attachments
+resource "aws_iam_role_policy_attachment" "lambda_bedrock_policy_attachment" {
+  role       = data.aws_iam_role.lambda_role.name
+  policy_arn = data.aws_iam_policy.lambda_bedrock_policy.arn
 }
+
+resource "aws_iam_role_policy_attachment" "lambda_basic_policy_attachment" {
+  role       = data.aws_iam_role.lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
 # API Gateway for Lambda
 resource "aws_apigatewayv2_api" "lambda_api" {
   name          = "${var.lambda_function_name}-api"
