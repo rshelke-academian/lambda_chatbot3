@@ -67,6 +67,7 @@ def lambda_handler(event, context):
                 'message': assistant_message
             })
         }
+        
 
     except Exception as e:
         print(f"Error: {str(e)}")
