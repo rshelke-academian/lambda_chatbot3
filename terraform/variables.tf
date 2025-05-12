@@ -21,5 +21,5 @@ variable "deployment_package_key" {
 variable "create_lambda_role" {
   description = "Set to true to create a new IAM role, false to reference existing one"
   type        = bool
-  default     = false
+  default     = true
 }
